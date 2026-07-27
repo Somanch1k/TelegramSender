@@ -1,26 +1,28 @@
 from pathlib import Path
-from dotenv import load_dotenv
 import os
 
-# Загружаем переменные из .env
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения
 load_dotenv()
 
-# Корневая папка проекта
+# Корень проекта
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Папки проекта
+# Основные папки
 DATA_DIR = BASE_DIR / "data"
-LOG_DIR = BASE_DIR / "logs"
-SESSION_DIR = BASE_DIR / "sessions"
+LOGS_DIR = BASE_DIR / "logs"
+SESSIONS_DIR = BASE_DIR / "sessions"
 
-# Создаём их автоматически
-DATA_DIR.mkdir(exist_ok=True)
-LOG_DIR.mkdir(exist_ok=True)
-SESSION_DIR.mkdir(exist_ok=True)
+# Создаём папки автоматически
+for folder in (DATA_DIR, LOGS_DIR, SESSIONS_DIR):
+    folder.mkdir(exist_ok=True)
 
-# Telegram API
+# Пути к файлам
+DATABASE_PATH = DATA_DIR / "bot.db"
+LOG_FILE = LOGS_DIR / "bot.log"
+SESSION_FILE = SESSIONS_DIR / "sender"
+
+# Telegram
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
-
-# Имя файла сессии
-SESSION_NAME = "sender"

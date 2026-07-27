@@ -1,11 +1,9 @@
-from app.config import *
+from app.utils.logger import setup_logger
 
-print("=" * 50)
-print("Telegram Sender")
-print("=" * 50)
+logger = setup_logger()
 
-print(f"Data folder: {DATA_DIR}")
-print(f"Logs folder: {LOG_DIR}")
-print(f"Session folder: {SESSION_DIR}")
+logger.info("=" * 50)
+logger.info("Telegram Sender запускается...")
+logger.info("=" * 50)
 
-print("\nПроект успешно запущен.")
+logger.info("Проект успешно запущен.")
