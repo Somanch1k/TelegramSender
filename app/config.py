@@ -26,3 +26,6 @@ SESSION_FILE = SESSIONS_DIR / "sender"
 # Telegram
 API_ID = os.getenv("API_ID")
 API_HASH = os.getenv("API_HASH")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+CONTROL_GROUP_ID = int(os.getenv("CONTROL_GROUP_ID"))

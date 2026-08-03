@@ -1,0 +1,12 @@
+services:
+  telegram-sender:
+    build: .
+    container_name: telegram-sender
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Keep authorization, database and logs after container recreation.
+      - ./sessions:/app/sessions
+      - ./data:/app/data
+      - ./logs:/app/logs

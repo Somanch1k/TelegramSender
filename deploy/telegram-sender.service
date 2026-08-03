@@ -1,0 +1,16 @@
+[Unit]
+Description=Telegram Sender
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Change these two paths and the user name for your server.
+User=ubuntu
+WorkingDirectory=/home/ubuntu/TelegramSender
+ExecStart=/home/ubuntu/TelegramSender/venv/bin/python main.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
