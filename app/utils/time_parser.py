@@ -86,10 +86,12 @@ def parse_time_hhmm(text: str) -> time:
 
 def parse_time_range(text: str):
     """Parses '09:00-21:00' or '09:00 21:00' into (time(9,0), time(21,0))."""
-    cleaned = text.replace("-", " ").replace("—", " ").strip()
-    parts = cleaned.split()
-    if len(parts) != 2:
+    match = re.fullmatch(
+        r"\s*(\d{1,2}:\d{2})\s*[-\u2010\u2011\u2012\u2013\u2014\u2212]\s*(\d{1,2}:\d{2})\s*",
+        text,
+    )
+    if not match:
         raise ValueError("Формат времени должен быть ЧЧ:ММ-ЧЧ:ММ, например: 09:00-21:00")
-    t1 = parse_time_hhmm(parts[0])
-    t2 = parse_time_hhmm(parts[1])
+    t1 = parse_time_hhmm(match.group(1))
+    t2 = parse_time_hhmm(match.group(2))
     return t1, t2
