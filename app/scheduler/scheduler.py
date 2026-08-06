@@ -67,10 +67,10 @@ class BroadcastScheduler:
         del self.plans[plan["id"]]
         return True
 
-    def forget_running_plan(self):
+    def forget_running_plan(self, slot_id=1):
         """Removes the automatic stop job when a running plan is stopped manually."""
         for plan_id, plan in list(self.plans.items()):
-            if plan["started"]:
+            if plan.get("started") and plan.get("slot_id") == slot_id:
                 job = self.scheduler.get_job(f"broadcast_stop_{plan_id}")
                 if job:
                     self.scheduler.remove_job(job.id)
@@ -87,14 +87,18 @@ class BroadcastScheduler:
         plan = self.plans.get(plan_id)
         if not plan:
             return
+
+        slot_id = 1 if not self.sender.is_slot_running(1) else (2 if not self.sender.is_slot_running(2) else 1)
+
         try:
-            self.sender.start(plan["chat_ids"], plan["message"], plan["interval"], plan["titles"])
-        except RuntimeError as error:
-            await self.telegram.send_message(self.control_group_id, f"Не удалось начать план {plan_id}: {error}")
+            self.sender.start(plan["chat_ids"], plan["message"], plan["interval"], plan["titles"], slot_id=slot_id)
+        except (RuntimeError, ValueError) as error:
+            await self.telegram.send_message(self.control_group_id, f"❌ Не удалось начать план {plan_id}: {error}")
             del self.plans[plan_id]
             return
 
         plan["started"] = True
+        plan["slot_id"] = slot_id
         self.scheduler.add_job(
             self._stop_broadcast,
             trigger="date",
@@ -104,11 +108,14 @@ class BroadcastScheduler:
         )
         await self.telegram.send_message(
             self.control_group_id,
-            f"▶️ Запланированная рассылка {plan_id} началась. Завершение: {plan['end_at'].strftime('%H:%M:%S')}.",
+            f"▶️ Запланированная рассылка {plan_id} (слот {slot_id}) началась. Завершение: {plan['end_at'].strftime('%H:%M:%S')}.",
         )
 
     async def _stop_broadcast(self, plan_id):
-        stats = await self.sender.stop()
+        plan = self.plans.get(plan_id)
+        slot_id = plan.get("slot_id", 1) if plan else 1
+        stats = await self.sender.stop(slot_id=slot_id)
         if stats:
-            await self.telegram.send_message(self.control_group_id, self.sender.format_stats(stats))
+            await self.telegram.send_message(self.control_group_id, self.sender.format_stats(stats, slot_id=slot_id))
         self.plans.pop(plan_id, None)
+

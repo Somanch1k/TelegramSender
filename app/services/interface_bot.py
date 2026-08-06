@@ -54,14 +54,35 @@ class InterfaceBot:
             self._task = None
 
     async def send_menu(self):
+        s1_running = self.sender.is_slot_running(1)
+        s2_running = self.sender.is_slot_running(2)
+
+        if s1_running and not s2_running:
+            start_btn = self._button("▶️ Начать рассылку 2", "start2")
+        elif not s1_running and s2_running:
+            start_btn = self._button("▶️ Начать рассылку 1", "start")
+        elif not s1_running and not s2_running:
+            start_btn = self._button("▶️ Начать рассылку", "start")
+        else:
+            start_btn = None
+
+        row2 = [start_btn, self._button("✉️ Отправить один раз", "send")] if start_btn else [self._button("✉️ Отправить один раз", "send")]
+
         keyboard = [
             [self._button("📋 Группы", "groups"), self._button("📌 Выбранные", "selected")],
-            [self._button("▶️ Начать рассылку", "start"), self._button("✉️ Отправить один раз", "send")],
+            row2,
             [self._button("⏱ Интервал", "interval"), self._button("🗓 Запланировать", "schedule")],
             [self._button("🗓 Планы", "plans"), self._button("ℹ️ Статус", "status")],
         ]
-        if self.sender.is_running:
-            keyboard.append([self._button("⏹ Остановить рассылку", "stop")])
+
+        if s1_running and s2_running:
+            keyboard.append([self._button("⏹ Остановить рассылку 1", "stop1"), self._button("⏹ Остановить рассылку 2", "stop2")])
+            keyboard.append([self._button("⏹ Остановить все рассылки", "stop_all")])
+        elif s1_running:
+            keyboard.append([self._button("⏹ Остановить рассылку", "stop1")])
+        elif s2_running:
+            keyboard.append([self._button("⏹ Остановить рассылку 2", "stop2")])
+
         text = "Панель управления рассылкой. Выберите действие:"
         if self._menu_message_id:
             try:
@@ -123,7 +144,8 @@ class InterfaceBot:
 
     async def _ask(self, user_id, action):
         prompts = {
-            "start": "Введите текст для повторяющейся рассылки.",
+            "start": "Введите текст для рассылки 1.",
+            "start2": "Введите текст для параллельной рассылки 2.",
             "send": "Введите текст для однократной отправки.",
             "interval": "Введите интервал в секундах, например: 10",
             "schedule": "Введите: ЧЧ:ММ ДЛИТЕЛЬНОСТЬ_СЕК ИНТЕРВАЛ_СЕК ТЕКСТ\nПример: 18:30 300 10 Привет!",
@@ -207,12 +229,20 @@ class InterfaceBot:
             await self._toggle_group(data.removeprefix("toggle:"), message_id)
         elif data == "selected":
             await self._show_selected()
-        elif data in {"start", "send", "interval", "schedule"}:
+        elif data in {"start", "start2", "send", "interval", "schedule"}:
             await self._ask(user_id, data)
         elif data == "status":
             await self._run_telethon_command("/status")
-        elif data == "stop":
-            await self._run_telethon_command("/stop")
+        elif data in {"stop", "stop1"}:
+            await self._run_telethon_command("/stop1")
+            await asyncio.sleep(0.2)
+            await self.send_menu()
+        elif data == "stop2":
+            await self._run_telethon_command("/stop2")
+            await asyncio.sleep(0.2)
+            await self.send_menu()
+        elif data == "stop_all":
+            await self._run_telethon_command("/stop_all")
             await asyncio.sleep(0.2)
             await self.send_menu()
         elif data == "plans":
@@ -223,6 +253,7 @@ class InterfaceBot:
                 await self._send_message(self.control_group_id, f"✅ План {plan_id} отменён.")
             else:
                 await self._send_message(self.control_group_id, "План не найден или уже запущен.")
+
 
     async def _run_telethon_command(self, command):
         await self._send_message(self.control_group_id, command)

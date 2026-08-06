@@ -29,10 +29,13 @@ class CommandHandler:
                 await event.reply("🏓 Pong!")
             elif text == "/status":
                 selected = self.app.groups.get_selected_groups()
-                status = "запущена" if self.app.sender.is_running else "не запущена"
+                s1 = "запущена" if self.app.sender.is_slot_running(1) else "не запущена"
+                s2 = "запущена" if self.app.sender.is_slot_running(2) else "не запущена"
                 await event.reply(
                     f"🟢 Приложение работает.\nВыбрано групп: {len(selected)}\n"
-                    f"Интервал: {self.app.groups.get_interval()} сек.\nРассылка: {status}."
+                    f"Интервал: {self.app.groups.get_interval()} сек.\n"
+                    f"Рассылка 1: {s1}\n"
+                    f"Рассылка 2: {s2}"
                 )
             elif text == "/groups":
                 await self._show_groups(event)
@@ -50,12 +53,27 @@ class CommandHandler:
                 await self._schedule_cancel(event, text)
             elif text.startswith("/send "):
                 await self._send_once(event, text.removeprefix("/send ").strip())
+            elif text.startswith("/start2 "):
+                await self._start(event, text.removeprefix("/start2 ").strip(), slot_id=2)
             elif text.startswith("/start "):
-                await self._start(event, text.removeprefix("/start ").strip())
-            elif text == "/stop":
-                self.app.scheduler.forget_running_plan()
-                stats = await self.app.sender.stop()
-                await event.reply(self.app.sender.format_stats(stats) if stats else "Рассылка сейчас не запущена.")
+                await self._start(event, text.removeprefix("/start ").strip(), slot_id=1)
+            elif text in {"/stop", "/stop1"}:
+                self.app.scheduler.forget_running_plan(slot_id=1)
+                stats = await self.app.sender.stop(slot_id=1)
+                await event.reply(self.app.sender.format_stats(stats, slot_id=1) if stats else "Рассылка 1 сейчас не запущена.")
+            elif text == "/stop2":
+                self.app.scheduler.forget_running_plan(slot_id=2)
+                stats = await self.app.sender.stop(slot_id=2)
+                await event.reply(self.app.sender.format_stats(stats, slot_id=2) if stats else "Рассылка 2 сейчас не запущена.")
+            elif text == "/stop_all":
+                self.app.scheduler.forget_running_plan(slot_id=1)
+                self.app.scheduler.forget_running_plan(slot_id=2)
+                all_stats = await self.app.sender.stop(slot_id=None)
+                if not all_stats:
+                    await event.reply("Активных рассылок сейчас нет.")
+                else:
+                    lines = [self.app.sender.format_stats(st, slot_id=sid) for sid, st in all_stats.items()]
+                    await event.reply("\n\n".join(lines))
             elif text == "/admins":
                 await self._show_admins(event)
             elif text.startswith("/admin_add "):
@@ -66,8 +84,11 @@ class CommandHandler:
                 await event.reply(
                     "📋 Команды\n\n/groups — показать группы\n/select 1 3 — выбрать группы\n"
                     "/selected — выбранные группы\n/interval 10 — интервал между рассылками\n"
-                    "/send ТЕКСТ — отправить один раз\n/start ТЕКСТ — начать рассылку\n"
-                    "/stop — остановить и показать статистику\n/status\n\n"
+                    "/send ТЕКСТ — отправить один раз\n/start ТЕКСТ — начать рассылку 1\n"
+                    "/start2 ТЕКСТ — начать паралельную рассылку 2\n"
+                    "/stop (или /stop1) — остановить рассылку 1\n"
+                    "/stop2 — остановить рассылку 2\n"
+                    "/stop_all — остановить все рассылки\n/status\n\n"
                     "/schedule 18:30 300 10 ТЕКСТ — запланировать рассылку\n"
                     "/schedule_status — показать планы\n"
                     "/schedule_cancel ID — отменить план\n\n"
@@ -189,9 +210,10 @@ class CommandHandler:
         sent = sum(not isinstance(result, Exception) for result in results)
         await event.reply(f"✅ Сообщение отправлено в {sent} из {len(chat_ids)} групп.")
 
-    async def _start(self, event, message):
+    async def _start(self, event, message, slot_id=1):
         if not message:
-            await event.reply("Укажите текст: /start Ваше сообщение")
+            cmd = "/start2" if slot_id == 2 else "/start"
+            await event.reply(f"Укажите текст: {cmd} Ваше сообщение")
             return
         chat_ids = self.app.groups.get_selected_groups()
         if not chat_ids:
@@ -199,11 +221,13 @@ class CommandHandler:
             return
         titles = {group["chat_id"]: group["title"] for group in self.app.groups.get_groups()}
         interval = self.app.groups.get_interval()
+        stop_cmd = f"/stop{slot_id}" if slot_id == 2 else "/stop"
         try:
-            self.app.sender.start(chat_ids, message, interval, titles)
-            await event.reply(f"✅ Рассылка запущена в {len(chat_ids)} групп. Интервал: {interval} сек. Остановка: /stop")
-        except RuntimeError as error:
-            await event.reply(str(error))
+            self.app.sender.start(chat_ids, message, interval, titles, slot_id=slot_id)
+            await event.reply(f"✅ Рассылка {slot_id} запущена в {len(chat_ids)} групп. Интервал: {interval} сек. Остановка: {stop_cmd}")
+        except (RuntimeError, ValueError) as error:
+            await event.reply(f"❌ {error}")
+
 
     async def _show_admins(self, event):
         admins = self.app.admins.get_admins()

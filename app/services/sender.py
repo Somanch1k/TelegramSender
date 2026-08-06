@@ -5,77 +5,118 @@ from telethon.errors import FloodWaitError
 
 
 class RepeatingSender:
-    """Sends a message concurrently to each selected group at a fixed interval."""
+    """Sends messages concurrently to each selected group at fixed intervals, supporting multiple parallel slots."""
 
     def __init__(self, telegram, logger):
         self.telegram = telegram
         self.logger = logger
-        self._task = None
-        self.stats = None
+        self._slots = {}
 
     @property
     def is_running(self):
-        return self._task is not None and not self._task.done()
+        return any(self.is_slot_running(slot_id) for slot_id in list(self._slots.keys()))
 
-    def start(self, chat_ids, text, interval_seconds, group_titles):
-        if self.is_running:
-            raise RuntimeError("Рассылка уже запущена. Сначала выполните /stop.")
+    def is_slot_running(self, slot_id=1):
+        slot = self._slots.get(slot_id)
+        return slot is not None and slot.get("task") is not None and not slot["task"].done()
 
-        self.stats = {
+    def get_active_chat_ids(self, exclude_slot=None):
+        active = set()
+        for slot_id, slot in list(self._slots.items()):
+            if slot_id != exclude_slot and self.is_slot_running(slot_id):
+                active.update(slot["chat_ids"])
+        return active
+
+    def start(self, chat_ids, text, interval_seconds, group_titles, slot_id=1):
+        if self.is_slot_running(slot_id):
+            raise RuntimeError(f"Рассылка {slot_id} уже запущена. Сначала выполните её остановку.")
+
+        active_elsewhere = self.get_active_chat_ids(exclude_slot=slot_id)
+        overlapping = set(chat_ids) & active_elsewhere
+        if overlapping:
+            overlapping_names = [str(group_titles.get(cid, cid)) for cid in overlapping]
+            names_str = ", ".join(overlapping_names)
+            raise ValueError(
+                f"Нельзя запускать параллельную рассылку в одни и те же группы в одно и то же время.\n"
+                f"Группы уже участвуют в другой активной рассылке: {names_str}"
+            )
+
+        stats = {
             "started_at": datetime.now().astimezone(),
             "finished_at": None,
             "interval": interval_seconds,
             "sent": {chat_id: 0 for chat_id in chat_ids},
             "titles": group_titles,
+            "text": text,
         }
-        self._task = asyncio.create_task(self._send_loop(chat_ids, text, interval_seconds))
+        task = asyncio.create_task(self._send_loop(slot_id, chat_ids, text, interval_seconds))
+        self._slots[slot_id] = {
+            "task": task,
+            "stats": stats,
+            "chat_ids": chat_ids,
+        }
 
-    async def stop(self):
-        if not self.is_running:
+    async def stop(self, slot_id=None):
+        if slot_id is not None:
+            return await self._stop_slot(slot_id)
+
+        all_stats = {}
+        for sid in list(self._slots.keys()):
+            stats = await self._stop_slot(sid)
+            if stats:
+                all_stats[sid] = stats
+        return all_stats
+
+    async def _stop_slot(self, slot_id):
+        if not self.is_slot_running(slot_id):
             return None
 
-        self._task.cancel()
+        slot = self._slots[slot_id]
+        task = slot["task"]
+        task.cancel()
         try:
-            await self._task
+            await task
         except asyncio.CancelledError:
             pass
         finally:
-            self._task = None
-            self.stats["finished_at"] = datetime.now().astimezone()
-        return self.stats
+            slot["stats"]["finished_at"] = datetime.now().astimezone()
+            stats = slot["stats"]
+            del self._slots[slot_id]
+        return stats
 
-    async def _send_loop(self, chat_ids, text, interval_seconds):
+    async def _send_loop(self, slot_id, chat_ids, text, interval_seconds):
         try:
             while True:
                 await asyncio.gather(
-                    *(self._send_to_group(chat_id, text) for chat_id in chat_ids)
+                    *(self._send_to_group(slot_id, chat_id, text) for chat_id in chat_ids)
                 )
                 await asyncio.sleep(interval_seconds)
         except asyncio.CancelledError:
-            self.logger.info("Рассылка остановлена.")
+            self.logger.info(f"Рассылка {slot_id} остановлена.")
             raise
         except Exception:
-            self.logger.exception("Рассылка остановлена из-за ошибки.")
-            if self.stats:
-                self.stats["finished_at"] = datetime.now().astimezone()
+            self.logger.exception(f"Рассылка {slot_id} остановлена из-за ошибки.")
+            if slot_id in self._slots and self._slots[slot_id]["stats"]:
+                self._slots[slot_id]["stats"]["finished_at"] = datetime.now().astimezone()
 
-    async def _send_to_group(self, chat_id, text):
+    async def _send_to_group(self, slot_id, chat_id, text):
         try:
             await self.telegram.send_message(chat_id, text)
-            self.stats["sent"][chat_id] += 1
-            self.logger.info("Сообщение отправлено в группу %s", chat_id)
+            if slot_id in self._slots:
+                self._slots[slot_id]["stats"]["sent"][chat_id] += 1
+            self.logger.info("Рассылка %s: Сообщение отправлено в группу %s", slot_id, chat_id)
         except FloodWaitError as error:
             self.logger.warning("Telegram ограничил отправку в %s на %s сек.", chat_id, error.seconds)
         except Exception:
             self.logger.exception("Не удалось отправить сообщение в группу %s.", chat_id)
 
     @staticmethod
-    def format_stats(stats):
+    def format_stats(stats, slot_id=1):
         started = stats["started_at"].strftime("%d.%m.%Y %H:%M:%S")
         finished = stats["finished_at"].strftime("%d.%m.%Y %H:%M:%S")
         duration = str(stats["finished_at"] - stats["started_at"]).split(".")[0]
         lines = [
-            "⏹ Рассылка завершена.",
+            f"⏹ Рассылка {slot_id} завершена.",
             f"Начало: {started}",
             f"Конец: {finished}",
             f"Длительность: {duration}",
@@ -87,3 +128,4 @@ class RepeatingSender:
             for chat_id, count in stats["sent"].items()
         )
         return "\n".join(lines)
+
