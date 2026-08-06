@@ -96,6 +96,7 @@ class CommandHandler:
                     "/stop (или /stop1) — остановить рассылку 1\n"
                     "/stop2 — остановить рассылку 2\n"
                     "/stop_all — остановить все рассылки\n/status\n/time — время, которое видит программа\n\n"
+                    "/cancel — отменить текущий ввод в меню\n\n"
                     "/schedule 18:30 300 10 ТЕКСТ — запланировать рассылку\n"
                     "/schedule_status — показать планы\n"
                     "/schedule_cancel ID — отменить план\n\n"

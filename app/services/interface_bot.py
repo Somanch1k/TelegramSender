@@ -112,6 +112,14 @@ class InterfaceBot:
         )
         await self._send_message(self.control_group_id, msg)
 
+    async def _cancel_input(self, user_id, notify=True):
+        """Cancel only the current interactive input; scheduled work is unaffected."""
+        cancelled = self._wizard.pop(user_id, None) is not None
+        cancelled = self._pending.pop(user_id, None) is not None or cancelled
+        if notify:
+            text = "✅ Текущее действие отменено. Откройте /menu и выберите другое действие." if cancelled else "Нет незавершённого действия."
+            await self._send_message(self.control_group_id, text)
+
     async def _show_campaigns(self):
         if not self.db:
             await self._send_message(self.control_group_id, "База данных недоступна.")
@@ -147,7 +155,8 @@ class InterfaceBot:
             self.control_group_id,
             "⚙️ **Конструктор кампании (Шаг 1 из 3)**\n\n"
             "Введите название и общее время работы кампании через дефис или пробел.\n"
-            "Пример: `УтреннийПрогрев 09:00-21:00`",
+            "Пример: `УтреннийПрогрев 09:00-21:00`\n\n"
+            "Чтобы прервать создание, отправьте `/cancel`.",
             reply_markup={"force_reply": True, "input_field_placeholder": "УтреннийПрогрев 09:00-21:00"}
         )
 
@@ -492,7 +501,10 @@ class InterfaceBot:
             text = (message.get("text") or "").strip()
             if not self.admins.has_access(username):
                 return
-            if text.lower() in {"/menu", f"/menu@{self.username}"}:
+            if text.lower() in {"/cancel", f"/cancel@{self.username}"}:
+                await self._cancel_input(user_id)
+            elif text.lower() in {"/menu", f"/menu@{self.username}"}:
+                await self._cancel_input(user_id, notify=False)
                 await self.send_menu()
             elif user_id in self._wizard:
                 await self._handle_wizard_input(user_id, text)
@@ -513,6 +525,7 @@ class InterfaceBot:
         message_id = callback["message"]["message_id"]
         user_id = callback["from"]["id"]
         if data == "menu":
+            await self._cancel_input(user_id, notify=False)
             await self.send_menu()
         elif data == "groups":
             await self._show_groups(message_id)
