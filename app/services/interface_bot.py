@@ -1,6 +1,6 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -151,6 +151,35 @@ class InterfaceBot:
             reply_markup={"force_reply": True, "input_field_placeholder": "УтреннийПрогрев 09:00-21:00"}
         )
 
+    @staticmethod
+    def _build_equal_windows(start_time, end_time, count):
+        """Split a same-day campaign window into contiguous, near-equal minute blocks."""
+        base_date = datetime.today().date()
+        start = datetime.combine(base_date, parse_time_hhmm(start_time))
+        end = datetime.combine(base_date, parse_time_hhmm(end_time))
+        duration = end - start
+        if duration < timedelta(minutes=count):
+            raise ValueError("Для равномерного распределения на каждое сообщение нужна хотя бы одна минута.")
+
+        windows = []
+        for index in range(count):
+            block_start = start + duration * index / count
+            block_end = start + duration * (index + 1) / count
+            windows.append({
+                "block_start": block_start.strftime("%H:%M"),
+                "block_end": block_end.strftime("%H:%M"),
+            })
+        return windows
+
+    async def _ask_block_text(self, state):
+        cur = state["current_block"]
+        block = state["temp_block"]
+        await self._send_message(
+            self.control_group_id,
+            f"Введите текст для Сообщения №{cur} ({block['block_start']}–{block['block_end']}):",
+            reply_markup={"force_reply": True, "input_field_placeholder": "Ваш текст здесь"},
+        )
+
     async def _handle_wizard_input(self, user_id, text):
         state = self._wizard.get(user_id)
         if not state:
@@ -195,15 +224,40 @@ class InterfaceBot:
                 return
             state["target_blocks"] = count
             state["current_block"] = 1
-            state["step"] = "block_window"
+            state["step"] = "distribution_mode"
 
             await self._send_message(
                 self.control_group_id,
-                f"**Сообщение №1 из {count}**\n\n"
-                "Введите промежуток времени для Сообщения №1 в формате `ЧЧ:ММ-ЧЧ:ММ`.\n"
-                "Пример: `09:00-12:00`",
-                reply_markup={"force_reply": True, "input_field_placeholder": "09:00-12:00"}
+                "Выберите распределение сообщений по времени:\n\n"
+                "• `авто` — программа равномерно разделит всё время кампании между сообщениями;\n"
+                "• `ручной` — вы сами укажете время для каждого сообщения.",
+                reply_markup={"force_reply": True, "input_field_placeholder": "авто или ручной"},
             )
+
+        elif step == "distribution_mode":
+            mode = text.strip().lower()
+            if mode in {"авто", "auto", "равномерно"}:
+                try:
+                    state["auto_windows"] = self._build_equal_windows(
+                        state["start_time"], state["end_time"], state["target_blocks"]
+                    )
+                except ValueError as error:
+                    await self._send_message(self.control_group_id, f"❌ {error}")
+                    return
+                state["temp_block"] = state["auto_windows"][0]
+                state["step"] = "block_text"
+                await self._ask_block_text(state)
+            elif mode in {"ручной", "manual", "вручную"}:
+                state["step"] = "block_window"
+                await self._send_message(
+                    self.control_group_id,
+                    f"**Сообщение №1 из {state['target_blocks']}**\n\n"
+                    "Введите промежуток времени в формате `ЧЧ:ММ-ЧЧ:ММ`.\n"
+                    f"Первое сообщение должно начаться в {state['start_time']}.",
+                    reply_markup={"force_reply": True, "input_field_placeholder": "09:00-12:00"},
+                )
+            else:
+                await self._send_message(self.control_group_id, "❌ Введите `авто` или `ручной`.")
 
         elif step == "block_window":
             try:
@@ -233,11 +287,7 @@ class InterfaceBot:
                 "block_end": t2.strftime("%H:%M"),
             }
             state["step"] = "block_text"
-            await self._send_message(
-                self.control_group_id,
-                f"Введите текст для Сообщения №{cur} ({state['temp_block']['block_start']}–{state['temp_block']['block_end']}):",
-                reply_markup={"force_reply": True, "input_field_placeholder": "Ваш текст здесь"}
-            )
+            await self._ask_block_text(state)
 
         elif step == "block_text":
             state["temp_block"]["message_text"] = text
@@ -270,15 +320,20 @@ class InterfaceBot:
 
             if state["current_block"] < state["target_blocks"]:
                 state["current_block"] += 1
-                state["step"] = "block_window"
                 cur = state["current_block"]
                 tot = state["target_blocks"]
-                await self._send_message(
-                    self.control_group_id,
-                    f"**Сообщение №{cur} из {tot}**\n\n"
-                    "Введите промежуток времени для следующего сообщения (например: `12:00-16:00`):",
-                    reply_markup={"force_reply": True, "input_field_placeholder": "12:00-16:00"}
-                )
+                if state.get("auto_windows"):
+                    state["temp_block"] = state["auto_windows"][cur - 1]
+                    state["step"] = "block_text"
+                    await self._ask_block_text(state)
+                else:
+                    state["step"] = "block_window"
+                    await self._send_message(
+                        self.control_group_id,
+                        f"**Сообщение №{cur} из {tot}**\n\n"
+                        "Введите промежуток времени для следующего сообщения (например: `12:00-16:00`):",
+                        reply_markup={"force_reply": True, "input_field_placeholder": "12:00-16:00"}
+                    )
             else:
                 # Wizard Finished -> Save to DB & Schedule
                 try:

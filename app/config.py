@@ -30,8 +30,8 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 CONTROL_GROUP_ID = int(os.getenv("CONTROL_GROUP_ID"))
 
-# Часовой пояс (по умолчанию Europe/Moscow)
-TIMEZONE_NAME = os.getenv("TIMEZONE", "Europe/Moscow")
+# Часовой пояс (по умолчанию Киев)
+TIMEZONE_NAME = os.getenv("TIMEZONE", "Europe/Kyiv")
 try:
     from zoneinfo import ZoneInfo
     TZ = ZoneInfo(TIMEZONE_NAME)
