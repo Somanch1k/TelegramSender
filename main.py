@@ -5,12 +5,15 @@ from app.handlers.command_handler import CommandHandler
 from app.services.telegram_client import TelegramClientManager
 from app.services.sender import RepeatingSender
 from app.scheduler.scheduler import BroadcastScheduler
-from app.config import BOT_TOKEN, CONTROL_GROUP_ID
+from app.config import BOT_TOKEN, CONTROL_GROUP_ID, DATA_DIR
 from app.services.interface_bot import InterfaceBot
+from app.utils.instance_lock import InstanceLock
 
 
 async def main():
 
+    instance_lock = InstanceLock(DATA_DIR / "telegram_sender.lock")
+    instance_lock.acquire()
     app = Application()
 
     telegram = TelegramClientManager()
@@ -61,6 +64,7 @@ async def main():
         await app.sender.stop()
         await app.interface_bot.stop()
         app.scheduler.shutdown()
+        instance_lock.release()
 
 
 if __name__ == "__main__":
