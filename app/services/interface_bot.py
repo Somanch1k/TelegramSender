@@ -60,7 +60,7 @@ class InterfaceBot:
                 pass
             self._task = None
 
-    async def send_menu(self):
+    async def send_menu(self, force_new=False):
         s1_running = self.sender.is_slot_running(1)
         s2_running = self.sender.is_slot_running(2)
 
@@ -93,7 +93,7 @@ class InterfaceBot:
 
         now_str = get_now().strftime("%H:%M:%S")
         text = f"Панель управления рассылкой.\n🕒 Время программы: {now_str} ({TIMEZONE_NAME})\nВыберите действие:"
-        if self._menu_message_id:
+        if self._menu_message_id and not force_new:
             try:
                 await self._edit_message(self._menu_message_id, text, keyboard)
                 return
@@ -511,7 +511,7 @@ class InterfaceBot:
                 await self._cancel_input(user_id)
             elif text.lower() in {"/menu", f"/menu@{self.username}"}:
                 await self._cancel_input(user_id, notify=False)
-                await self.send_menu()
+                await self.send_menu(force_new=True)
             elif user_id in self._wizard:
                 await self._handle_wizard_input(user_id, text)
             elif user_id in self._pending:
@@ -532,7 +532,7 @@ class InterfaceBot:
         user_id = callback["from"]["id"]
         if data == "menu":
             await self._cancel_input(user_id, notify=False)
-            await self.send_menu()
+            await self.send_menu(force_new=True)
         elif data == "groups":
             await self._show_groups(message_id)
         elif data.startswith("toggle:"):
