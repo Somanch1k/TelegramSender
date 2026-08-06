@@ -1,7 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
 from uuid import uuid4
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+from app.config import get_now, TZ
 
 
 class BroadcastScheduler:
@@ -12,7 +14,8 @@ class BroadcastScheduler:
         self.sender = sender
         self.logger = logger
         self.control_group_id = control_group_id
-        self.scheduler = AsyncIOScheduler(timezone=datetime.now().astimezone().tzinfo)
+        tz_obj = TZ or get_now().tzinfo
+        self.scheduler = AsyncIOScheduler(timezone=tz_obj)
         self.plans = {}
 
     def start(self):
@@ -53,11 +56,12 @@ class BroadcastScheduler:
         return self.plans[plan_id]
 
     def get_plans(self):
-        now = datetime.now().astimezone()
+        now = get_now()
         return sorted(
             (plan for plan in self.plans.values() if plan["end_at"] > now),
             key=lambda plan: plan["start_at"],
         )
+
 
     def cancel(self, plan_id):
         plan = self.plans.get(plan_id.upper())

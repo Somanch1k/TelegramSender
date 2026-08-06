@@ -1,7 +1,8 @@
 import asyncio
-from datetime import datetime
 
 from telethon.errors import FloodWaitError
+
+from app.config import get_now
 
 
 class RepeatingSender:
@@ -42,7 +43,7 @@ class RepeatingSender:
             )
 
         stats = {
-            "started_at": datetime.now().astimezone(),
+            "started_at": get_now(),
             "finished_at": None,
             "interval": interval_seconds,
             "sent": {chat_id: 0 for chat_id in chat_ids},
@@ -79,7 +80,7 @@ class RepeatingSender:
         except asyncio.CancelledError:
             pass
         finally:
-            slot["stats"]["finished_at"] = datetime.now().astimezone()
+            slot["stats"]["finished_at"] = get_now()
             stats = slot["stats"]
             del self._slots[slot_id]
         return stats
@@ -97,7 +98,8 @@ class RepeatingSender:
         except Exception:
             self.logger.exception(f"Рассылка {slot_id} остановлена из-за ошибки.")
             if slot_id in self._slots and self._slots[slot_id]["stats"]:
-                self._slots[slot_id]["stats"]["finished_at"] = datetime.now().astimezone()
+                self._slots[slot_id]["stats"]["finished_at"] = get_now()
+
 
     async def _send_to_group(self, slot_id, chat_id, text):
         try:

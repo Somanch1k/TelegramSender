@@ -1,6 +1,6 @@
 from pathlib import Path
 import os
-
+from datetime import datetime
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения
@@ -29,3 +29,17 @@ API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 CONTROL_GROUP_ID = int(os.getenv("CONTROL_GROUP_ID"))
+
+# Часовой пояс (по умолчанию Europe/Moscow)
+TIMEZONE_NAME = os.getenv("TIMEZONE", "Europe/Moscow")
+try:
+    from zoneinfo import ZoneInfo
+    TZ = ZoneInfo(TIMEZONE_NAME)
+except Exception:
+    TZ = None
+
+
+def get_now():
+    if TZ:
+        return datetime.now(TZ)
+    return datetime.now().astimezone()

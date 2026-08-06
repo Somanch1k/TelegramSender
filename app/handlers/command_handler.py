@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from telethon import events
 
-from app.config import CONTROL_GROUP_ID
+from app.config import CONTROL_GROUP_ID, get_now
 
 
 class CommandHandler:
@@ -160,8 +160,9 @@ class CommandHandler:
             await event.reply("Сначала выберите группы: /groups, затем /select 1 2.")
             return
 
-        now = datetime.now().astimezone()
+        now = get_now()
         start_at = now.replace(hour=start_time.hour, minute=start_time.minute, second=0, microsecond=0)
+
         if start_at <= now:
             start_at += timedelta(days=1)
         titles = {group["chat_id"]: group["title"] for group in self.app.groups.get_groups()}
