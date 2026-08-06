@@ -31,16 +31,24 @@ async def main():
 
     app.logger.info(f"Авторизован как {me.first_name}")
 
+    from app.services.campaign_engine import CampaignEngine
+
     app.sender = RepeatingSender(telegram, app.logger)
     app.scheduler = BroadcastScheduler(telegram, app.sender, app.logger, CONTROL_GROUP_ID)
     app.scheduler.start()
+
+    app.campaign_engine = CampaignEngine(telegram, app.database, app.logger, CONTROL_GROUP_ID, app.scheduler)
+    app.campaign_engine.reload_all()
+
     app.interface_bot = InterfaceBot(
         BOT_TOKEN, CONTROL_GROUP_ID, app.admins, app.scheduler,
-        app.groups, app.sender, telegram, app.logger,
+        app.groups, app.sender, telegram, app.logger, campaign_engine=app.campaign_engine,
+        database=app.database,
     )
     await app.interface_bot.initialize()
 
     commands = CommandHandler(telegram, app, app.interface_bot.username)
+
 
     commands.register()
     await app.interface_bot.start()

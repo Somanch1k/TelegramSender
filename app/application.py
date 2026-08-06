@@ -17,7 +17,9 @@ class Application:
         self.groups = GroupService(self.database)
         self.sender = None
         self.scheduler = None
+        self.campaign_engine = None
         self.interface_bot = None
+
 
         self.logger.info("База данных успешно подключена.")
 

@@ -40,7 +40,34 @@ class DatabaseManager:
         )
         """)
 
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS campaigns(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            start_time TEXT NOT NULL,
+            end_time TEXT NOT NULL,
+            chat_ids TEXT NOT NULL,
+            enabled INTEGER DEFAULT 1,
+            created_at TEXT NOT NULL
+        )
+        """)
+
+        self.cursor.execute("""
+        CREATE TABLE IF NOT EXISTS campaign_blocks(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            campaign_id INTEGER NOT NULL,
+            seq_order INTEGER NOT NULL,
+            block_start TEXT NOT NULL,
+            block_end TEXT NOT NULL,
+            message_text TEXT NOT NULL,
+            send_count INTEGER,
+            interval_seconds INTEGER,
+            FOREIGN KEY(campaign_id) REFERENCES campaigns(id) ON DELETE CASCADE
+        )
+        """)
+
         self.connection.commit()
+
 
     # =====================================================
     # SETTINGS
@@ -200,9 +227,84 @@ class DatabaseManager:
         return int(value)
 
     # =====================================================
+    # CAMPAIGNS
+    # =====================================================
+
+    def create_campaign(self, name, start_time, end_time, chat_ids, blocks):
+        import json
+        from datetime import datetime
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        chat_ids_json = json.dumps(chat_ids)
+
+        self.cursor.execute("""
+        INSERT INTO campaigns(name, start_time, end_time, chat_ids, enabled, created_at)
+        VALUES (?, ?, ?, ?, 1, ?)
+        """, (name, start_time, end_time, chat_ids_json, now_str))
+        campaign_id = self.cursor.lastrowid
+
+        for seq, block in enumerate(blocks, 1):
+            self.cursor.execute("""
+            INSERT INTO campaign_blocks(campaign_id, seq_order, block_start, block_end, message_text, send_count, interval_seconds)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (
+                campaign_id,
+                seq,
+                block["block_start"],
+                block["block_end"],
+                block["message_text"],
+                block.get("send_count"),
+                block.get("interval_seconds"),
+            ))
+
+        self.connection.commit()
+        return campaign_id
+
+    def get_campaigns(self):
+        import json
+        self.cursor.execute("""
+        SELECT * FROM campaigns ORDER BY id DESC
+        """)
+        rows = self.cursor.fetchall()
+        result = []
+        for row in rows:
+            camp = dict(row)
+            camp["chat_ids"] = json.loads(camp["chat_ids"])
+            camp["blocks"] = self.get_campaign_blocks(camp["id"])
+            result.append(camp)
+        return result
+
+    def get_campaign(self, campaign_id):
+        import json
+        self.cursor.execute("""
+        SELECT * FROM campaigns WHERE id = ?
+        """, (campaign_id,))
+        row = self.cursor.fetchone()
+        if not row:
+            return None
+        camp = dict(row)
+        camp["chat_ids"] = json.loads(camp["chat_ids"])
+        camp["blocks"] = self.get_campaign_blocks(campaign_id)
+        return camp
+
+    def get_campaign_blocks(self, campaign_id):
+        self.cursor.execute("""
+        SELECT * FROM campaign_blocks WHERE campaign_id = ? ORDER BY seq_order ASC
+        """, (campaign_id,))
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    def delete_campaign(self, campaign_id):
+        self.cursor.execute("DELETE FROM campaign_blocks WHERE campaign_id = ?", (campaign_id,))
+        self.cursor.execute("DELETE FROM campaigns WHERE id = ?", (campaign_id,))
+        self.connection.commit()
+
+    def toggle_campaign(self, campaign_id, enabled):
+        self.cursor.execute("UPDATE campaigns SET enabled = ? WHERE id = ?", (1 if enabled else 0, campaign_id))
+        self.connection.commit()
+
+    # =====================================================
     # DATABASE
     # =====================================================
 
     def close(self):
 
-        self.connection.close()
+        self.connection.close()

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from telethon import events
 
-from app.config import CONTROL_GROUP_ID, get_now
+from app.config import CONTROL_GROUP_ID, TIMEZONE_NAME, get_now
 
 
 class CommandHandler:
@@ -27,6 +27,13 @@ class CommandHandler:
 
             if text == "/ping":
                 await event.reply("🏓 Pong!")
+            elif text == "/time":
+                now = get_now()
+                await event.reply(
+                    f"🕒 Время программы: {now.strftime('%H:%M:%S')}\n"
+                    f"📅 Дата: {now.strftime('%d.%m.%Y')}\n"
+                    f"🌍 Часовой пояс: {TIMEZONE_NAME}"
+                )
             elif text == "/status":
                 selected = self.app.groups.get_selected_groups()
                 s1 = "запущена" if self.app.sender.is_slot_running(1) else "не запущена"
@@ -88,7 +95,7 @@ class CommandHandler:
                     "/start2 ТЕКСТ — начать паралельную рассылку 2\n"
                     "/stop (или /stop1) — остановить рассылку 1\n"
                     "/stop2 — остановить рассылку 2\n"
-                    "/stop_all — остановить все рассылки\n/status\n\n"
+                    "/stop_all — остановить все рассылки\n/status\n/time — время, которое видит программа\n\n"
                     "/schedule 18:30 300 10 ТЕКСТ — запланировать рассылку\n"
                     "/schedule_status — показать планы\n"
                     "/schedule_cancel ID — отменить план\n\n"
