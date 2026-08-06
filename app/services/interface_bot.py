@@ -205,7 +205,7 @@ class InterfaceBot:
             try:
                 t1, t2 = parse_time_range(parts[1])
             except ValueError as e:
-                await self._send_message(self.control_group_id, f"❌ {e}")
+                await self._send_message(self.control_group_id, f"❌ Неверный ввод: {e}\nПопробуйте ещё раз.")
                 return
             if t2 <= t1:
                 await self._send_message(self.control_group_id, "❌ Время окончания кампании должно быть позже времени начала.")
@@ -229,7 +229,7 @@ class InterfaceBot:
                 if count < 1 or count > 20:
                     raise ValueError
             except ValueError:
-                await self._send_message(self.control_group_id, "Укажите число от 1 до 20.")
+                await self._send_message(self.control_group_id, "❌ Неверный ввод. Укажите число от 1 до 20 и попробуйте ещё раз.")
                 return
             state["target_blocks"] = count
             state["current_block"] = 1
@@ -266,13 +266,13 @@ class InterfaceBot:
                     reply_markup={"force_reply": True, "input_field_placeholder": "09:00-12:00"},
                 )
             else:
-                await self._send_message(self.control_group_id, "❌ Введите `авто` или `ручной`.")
+                await self._send_message(self.control_group_id, "❌ Неверный ввод. Введите `авто` или `ручной` и попробуйте ещё раз.")
 
         elif step == "block_window":
             try:
                 t1, t2 = parse_time_range(text)
             except ValueError as e:
-                await self._send_message(self.control_group_id, f"❌ {e}")
+                await self._send_message(self.control_group_id, f"❌ Неверный ввод: {e}\nПопробуйте ещё раз.")
                 return
             cur = state["current_block"]
             expected_start = state["start_time"] if cur == 1 else state["blocks"][-1]["block_end"]
@@ -299,6 +299,9 @@ class InterfaceBot:
             await self._ask_block_text(state)
 
         elif step == "block_text":
+            if not text.strip():
+                await self._send_message(self.control_group_id, "❌ Текст не должен быть пустым. Попробуйте ещё раз.")
+                return
             state["temp_block"]["message_text"] = text
             state["step"] = "block_mode"
             cur = state["current_block"]
@@ -322,7 +325,7 @@ class InterfaceBot:
                     tb["interval_seconds"] = sec
                     tb["send_count"] = None
                 except ValueError as e:
-                    await self._send_message(self.control_group_id, f"❌ {e}")
+                    await self._send_message(self.control_group_id, f"❌ Неверный ввод: {e}\nПопробуйте ещё раз.")
                     return
 
             state["blocks"].append(tb)
@@ -451,26 +454,29 @@ class InterfaceBot:
         await self._send_message(self.control_group_id, prompts[action], reply_markup={"force_reply": True, "input_field_placeholder": "Введите значение"})
 
     async def _finish_input(self, user_id, text):
-        action = self._pending.pop(user_id)
+        action = self._pending.get(user_id)
+        if not action:
+            return
         if action == "interval":
             try:
                 sec = parse_interval_to_seconds(text)
                 if sec < 1:
                     raise ValueError
             except ValueError:
-                await self._send_message(self.control_group_id, "Неверный интервал. Укажите число секунд или 1ч 30м.")
+                await self._send_message(self.control_group_id, "❌ Неверный интервал. Укажите число секунд или 1ч 30м и попробуйте ещё раз.")
                 return
             command = f"/interval {sec}"
         elif action == "schedule":
             if len(text.split(maxsplit=3)) != 4:
-                await self._send_message(self.control_group_id, "Неверный формат. Откройте меню и попробуйте снова.")
+                await self._send_message(self.control_group_id, "❌ Неверный формат. Введите все четыре части команды и попробуйте ещё раз.")
                 return
             command = f"/schedule {text}"
         else:
             if not text:
-                await self._send_message(self.control_group_id, "Текст не должен быть пустым.")
+                await self._send_message(self.control_group_id, "❌ Текст не должен быть пустым. Попробуйте ещё раз.")
                 return
             command = f"/{action} {text}"
+        self._pending.pop(user_id, None)
         await self._run_telethon_command(command)
         await asyncio.sleep(0.2)
         await self.send_menu()
